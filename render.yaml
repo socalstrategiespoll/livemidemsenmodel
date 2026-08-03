@@ -1,0 +1,39 @@
+# Render blueprint: one model cycle per minute.
+#
+# Flat layout. Every .py sits at the repository root, so the command is a plain
+# script call rather than a package invocation.
+#
+# Set the four R2_* variables in the Render dashboard after the first deploy.
+# They are marked sync:false so they never live in git.
+#
+# STATE: cron containers are ephemeral. Nothing written to disk survives to the next
+# run, so R2 is not optional. Without it the batch history is lost every minute,
+# mode_calibration has nothing to learn the early/Election Day gap from, and the gap
+# silently sits at its assumed value all night while the projection keeps rendering
+# as though nothing is wrong.
+
+services:
+  - type: cron
+    name: mi-model-cron
+    runtime: python
+    plan: starter
+    schedule: "* * * * *"
+    buildCommand: pip install -r requirements.txt
+    command: python run.py --once
+    envVars:
+      - key: PYTHON_VERSION
+        value: "3.12.3"
+      - key: RACE_ID
+        value: "84778"
+      - key: N_SIMS
+        value: "20000"
+      - key: ARCHIVE_HISTORY
+        value: "1"
+      - key: R2_ACCOUNT_ID
+        sync: false
+      - key: R2_ACCESS_KEY_ID
+        sync: false
+      - key: R2_SECRET_ACCESS_KEY
+        sync: false
+      - key: R2_BUCKET
+        sync: false
