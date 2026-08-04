@@ -50,6 +50,7 @@ from michigan_primary_model import build_michigan_county_data
 from vote_method_split import build_vote_method_table
 from mode_calibration import VoteFeed
 from civicapi_feed import fetch_race, parse_payload, MICHIGAN_SENATE_DEM_PRIMARY
+import detroit_split as detroit
 import hierarchical_model as hm
 
 
@@ -156,6 +157,7 @@ def build_output(result: dict, parsed: dict, race_id: int) -> dict:
             "unmatched_counties": parsed.get("unmatched", []),
             "candidate_names": parsed.get("candidate_names"),
         },
+        "wayne_detail": result.get("wayne_detail"),
         "regional_shift": {k: round(v, 2) for k, v
                            in result["region_posterior_shift"].items()},
     }
@@ -275,8 +277,29 @@ def poller() -> None:
                 feed.update(county, record["el_sayed"], record["stevens"],
                             pct_reporting=record.get("percent_precincts"))
 
+            # Detroit reports separately and carries vote mode, so it can pin
+            # down which half of Wayne has actually reported. Never allowed to
+            # break the cycle: an unreachable Detroit feed just means Wayne falls
+            # back to county-level inference.
+            wayne_detail, override = None, None
+            try:
+                d = detroit.fetch_detroit()
+                if d:
+                    wrow = base_table.set_index('county').loc['Wayne']
+                    wrec = parsed['counties'].get('Wayne')
+                    if wrec:
+                        wayne_detail = detroit.wayne_remainder(
+                            d, wrec['el_sayed'], wrec['stevens'],
+                            float(wrow['total_votes']), float(wrow['early_votes']),
+                            float(wrow['ed_votes']))
+                        if wayne_detail.get('available'):
+                            override = {'Wayne': wayne_detail['remainder_margin']}
+            except Exception as exc:
+                print("   Detroit feed unavailable: %s" % exc, flush=True)
+
             result = hm.simulate(counties, base_table, reported=None, feed=feed,
-                                 n_sims=N_SIMS)
+                                 n_sims=N_SIMS, remainder_override=override)
+            result['wayne_detail'] = wayne_detail
             output = build_output(result, parsed, RACE_ID)
             STATE.publish(output)
             save_state(feed)

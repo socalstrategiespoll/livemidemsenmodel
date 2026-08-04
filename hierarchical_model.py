@@ -262,6 +262,7 @@ def simulate(counties: pd.DataFrame = None,
              method_table: pd.DataFrame = None,
              reported: dict = None,
              feed: 'VoteFeed' = None,
+             remainder_override: dict = None,
              n_sims: int = 20000,
              seed: int = None,
              **cov_kwargs) -> dict:
@@ -408,6 +409,14 @@ def simulate(counties: pd.DataFrame = None,
         (rem_early * early_margin + rem_ed * ed_margin) / np.maximum(rem_pool, 1e-9),
         baseline)
 
+    # Sub-county detail beats county-level inference. Where a county's remainder
+    # has been worked out from a finer feed (Detroit inside Wayne), that number
+    # replaces the mode-blend derived above.
+    if remainder_override:
+        for county, value in remainder_override.items():
+            if county in idx_of:
+                remainder_baseline[idx_of[county]] = float(value)
+
     projected_margin = np.clip(remainder_baseline[None, :] + draws, -100.0, 100.0)
     share_el_sayed = (50.0 + projected_margin / 2.0) / 100.0
 
@@ -451,6 +460,7 @@ def simulate(counties: pd.DataFrame = None,
         'remaining_early': pd.Series(rem_early, index=counties['county']),
         'remaining_ed': pd.Series(rem_ed, index=counties['county']),
         'county_theta': pd.Series(theta, index=counties['county']),
+        'remainder_override': dict(remainder_override or {}),
         'calibration': calibration,
         'turnout_calibration': turnout_calibration,
         'projected_turnout': int(counties['turnout'].sum()),
