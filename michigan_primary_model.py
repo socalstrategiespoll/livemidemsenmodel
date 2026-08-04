@@ -449,23 +449,23 @@ def build_michigan_county_data() -> pd.DataFrame:
     
     # El-Sayed vs Stevens baseline margins
     margin_baselines = {
-        'Wayne': 8.0, 'Oakland': -8.3, 'Macomb': 12.1, 'Kent': 30.9, 'Washtenaw': 39.4,
-        'Genesee': 5.0, 'Ottawa': 41.5, 'Kalamazoo': 21.9, 'Ingham': 53.7, 'Livingston': 51.4,
-        'Saginaw': 4.6, 'Muskegon': 12.0, 'St. Clair': 4.3, 'Berrien': 5.2, 'Monroe': 24.5,
-        'Jackson': 1.4, 'Allegan': 15.2, 'Calhoun': 10.9, 'Bay': 4.0, 'Eaton': 33.2,
-        'Grand Traverse': 37.4, 'Lapeer': 1.1, 'Midland': 33.7, 'Lenawee': 4.5, 'Clinton': 37.9,
-        'Marquette': 31.4, 'Shiawassee': 14.5, 'Barry': 11.7, 'Van Buren': 19.2, 'Isabella': 39.5,
-        'St. Joseph': -2.2, 'Tuscola': -3.8, 'Montcalm': 8.8, 'Ionia': 16.0, 'Newaygo': 19.5,
-        'Cass': 1.1, 'Sanilac': 1.0, 'Delta': 0.0, 'Emmet': 29.9, 'Hillsdale': 3.5, 'Branch': 9.6,
-        'Houghton': 35.7, 'Mecosta': 10.0, 'Charlevoix': 38.2, 'Gratiot': -4.0, 'Wexford': 0.1,
-        'Chippewa': 1.1, 'Huron': 9.2, 'Antrim': 15.0, 'Mason': 9.9, 'Alpena': 8.3,
-        'Cheboygan': 11.1, 'Dickinson': 9.2, 'Leelanau': 66.5, 'Otsego': -6.8, 'Manistee': 20.0,
-        'Clare': 4.3, 'Iosco': 8.6, 'Menominee': 2.1, 'Gladwin': 22.8, 'Roscommon': 4.9,
-        'Oceana': -0.5, 'Ogemaw': 21.3, 'Osceola': 1.6, 'Benzie': 36.1, 'Kalkaska': 5.4,
-        'Arenac': 6.0, 'Missaukee': 3.9, 'Crawford': 17.0, 'Gogebic': 4.4, 'Presque Isle': 8.0,
-        'Mackinac': 0.4, 'Iron': 3.7, 'Montmorency': 14.6, 'Alcona': 11.6, 'Lake': -5.9,
-        'Alger': 0.1, 'Schoolcraft': 12.8, 'Baraga': 2.3, 'Oscoda': 9.4, 'Ontonagon': -0.3,
-        'Luce': -1.6, 'Keweenaw': 5.9
+        'Wayne': 8.7, 'Oakland': -8.3, 'Macomb': 12.8, 'Kent': 29.0, 'Washtenaw': 36.2,
+        'Genesee': 7.0, 'Ottawa': 34.0, 'Kalamazoo': 20.7, 'Ingham': 46.8, 'Livingston': 42.5,
+        'Saginaw': -2.5, 'Muskegon': 13.0, 'St. Clair': 7.8, 'Berrien': 8.4, 'Monroe': 21.9,
+        'Jackson': 5.7, 'Allegan': 15.4, 'Calhoun': 12.5, 'Bay': 7.5, 'Eaton': 28.3,
+        'Grand Traverse': 31.2, 'Lapeer': 6.2, 'Midland': 27.9, 'Lenawee': 8.4, 'Clinton': 30.9,
+        'Marquette': 26.7, 'Shiawassee': 14.9, 'Barry': 13.3, 'Van Buren': 18.0, 'Isabella': 31.1,
+        'St. Joseph': 5.7, 'Tuscola': 4.1, 'Montcalm': 11.4, 'Ionia': 15.8, 'Newaygo': 17.8,
+        'Cass': 7.2, 'Sanilac': 7.3, 'Delta': 6.3, 'Emmet': 24.3, 'Hillsdale': 8.8,
+        'Branch': 12.3, 'Houghton': 27.6, 'Mecosta': 12.3, 'Charlevoix': 29.0, 'Gratiot': 4.6,
+        'Wexford': 6.9, 'Chippewa': 7.1, 'Huron': 12.0, 'Antrim': 15.2, 'Mason': 12.3,
+        'Alpena': 11.2, 'Cheboygan': 13.0, 'Dickinson': 11.9, 'Leelanau': 48.0, 'Otsego': 3.0,
+        'Manistee': 18.2, 'Clare': 9.2, 'Iosco': 11.5, 'Menominee': 8.1, 'Gladwin': 19.5,
+        'Roscommon': 9.4, 'Oceana': 6.6, 'Ogemaw': 18.6, 'Osceola': 8.3, 'Benzie': 27.9,
+        'Kalkaska': 10.1, 'Arenac': 10.7, 'Missaukee': 9.9, 'Crawford': 16.2, 'Gogebic': 9.6,
+        'Presque Isle': 11.4, 'Mackinac': 7.8, 'Iron': 9.3, 'Montmorency': 15.0, 'Alcona': 13.5,
+        'Lake': 4.7, 'Alger': 7.5, 'Schoolcraft': 14.1, 'Baraga': 9.2, 'Oscoda': 12.7,
+        'Ontonagon': 7.8, 'Luce': 8.5, 'Keweenaw': 11.4
     }
     
     # Scale to 1.42M turnout
