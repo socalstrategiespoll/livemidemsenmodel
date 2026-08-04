@@ -240,6 +240,32 @@ def wayne_remainder(detroit: dict,
     if d_counted <= 0:
         return {"available": False, "reason": "Detroit reporting zero"}
 
+    wayne_counted = wayne_counted_el_sayed + wayne_counted_stevens
+
+    # CONSISTENCY GATE.
+    #
+    # Detroit and civicAPI refresh independently, so Detroit will sometimes be
+    # ahead. That is not a double count — Detroit votes never enter the totals,
+    # which come only from civicAPI — but it does break the decomposition. If
+    # Detroit reports 46,000 votes and civicAPI's Wayne still shows 0, the split
+    # concludes the suburbs are entirely outstanding and hands back a
+    # suburb-weighted remainder, while simulate() applies that remainder to the
+    # whole county including the Stevens-heavy Detroit votes it does not yet know
+    # about. Wayne gets inflated.
+    #
+    # So the override is only offered when civicAPI's Wayne count can actually
+    # contain the Detroit count. Otherwise Wayne falls back to county-level
+    # inference until the feeds line up, which is a lost enhancement rather than
+    # a wrong number.
+    tolerance = wayne_counted * 0.01 + 200      # absorbs refresh jitter
+    if wayne_counted <= 0:
+        return {"available": False, "reason": "civicAPI Wayne has not reported yet",
+                "detroit_counted": d_counted, "wayne_counted": 0}
+    if d_counted > wayne_counted + tolerance:
+        return {"available": False,
+                "reason": "feeds out of step: Detroit ahead of civicAPI",
+                "detroit_counted": d_counted, "wayne_counted": wayne_counted}
+
     d_margin_base, rest_margin_base = wayne_sub_baselines()
 
     # Projected sizes of each half
@@ -248,7 +274,7 @@ def wayne_remainder(detroit: dict,
 
     # Observed
     d_margin = (d_es["total"] - d_st["total"]) / d_counted * 100.0
-    rest_counted = (wayne_counted_el_sayed + wayne_counted_stevens) - d_counted
+    rest_counted = wayne_counted - d_counted
     rest_margin = None
     if rest_counted > 0:
         rest_es = wayne_counted_el_sayed - d_es["total"]
@@ -256,7 +282,9 @@ def wayne_remainder(detroit: dict,
         if rest_es >= 0 and rest_st >= 0:
             rest_margin = (rest_es - rest_st) / rest_counted * 100.0
         else:
-            rest_counted = 0  # civicAPI and Detroit are out of step; ignore
+            # Within tolerance on the total but negative on a candidate. Treat the
+            # suburbs as not yet reporting rather than inventing a margin.
+            rest_counted = 0
 
     # Shift each half toward what it is actually doing, damped by completeness.
     # A half that has barely reported keeps its baseline.
@@ -271,6 +299,23 @@ def wayne_remainder(detroit: dict,
 
     d_left = max(d_total - d_counted, 0.0)
     rest_left = max(rest_total - max(rest_counted, 0), 0.0)
+
+    # Conserve volume against the simulator. simulate() computes Wayne's remaining
+    # vote as (projected total - counted), and the two halves must sum to exactly
+    # that. They can drift apart when Detroit's reported count disagrees with the
+    # 39% share assumption — if Detroit has posted less than 39% of what Wayne has
+    # counted, the split would otherwise claim Detroit vote is still outstanding
+    # that Wayne says is already in. Rescaling keeps the Detroit-to-suburb ratio
+    # while forcing the total to match.
+    actual_left = max(wayne_total_projected - wayne_counted, 0.0)
+    raw_left = d_left + rest_left
+    if raw_left > 0:
+        scale = actual_left / raw_left
+        d_left *= scale
+        rest_left *= scale
+    elif actual_left > 0:
+        d_left = actual_left * DETROIT_SHARE_OF_WAYNE
+        rest_left = actual_left - d_left
     left = d_left + rest_left
 
     if left <= 0:
@@ -278,20 +323,43 @@ def wayne_remainder(detroit: dict,
     else:
         blended = (d_left * d_proj + rest_left * rest_proj) / left
 
-    # Detroit's mode split is observed, so Wayne's theta can be computed for the
-    # Detroit portion instead of inferred.
+    # Detroit's mode split is OBSERVED, not inferred, so it can pin down Wayne's
+    # theta directly for the Detroit share of the count. Where the suburbs have
+    # also reported, their mode split is still unknown, so the two are blended by
+    # volume: the observed part carries its real value and only the unobserved
+    # remainder falls back to the prior.
     d_early = d_es["early"] + d_st["early"]
-    d_mode_known = (d_early + d_es["ed"] + d_st["ed"]) > 0
+    d_ed = d_es["ed"] + d_st["ed"]
+    d_mode_known = (d_early + d_ed) > 0
+
+    theta_observed = None
+    theta_coverage = 0.0
+    if d_mode_known:
+        d_mode_total = d_early + d_ed
+        theta_detroit = d_early / d_mode_total
+        theta_coverage = min(d_mode_total / max(wayne_counted, 1.0), 1.0)
+        if rest_counted <= 0 or theta_coverage >= 0.999:
+            theta_observed = theta_detroit
+        else:
+            # Suburban mode split unknown; fall back to the county's overall early
+            # share for that portion only.
+            rest_prior = wayne_early_pool / max(wayne_early_pool + wayne_ed_pool, 1.0)
+            theta_observed = (d_mode_total * theta_detroit
+                              + rest_counted * rest_prior) / max(wayne_counted, 1.0)
 
     return {
         "available": True,
         "detroit_counted": d_counted,
+        "wayne_counted": wayne_counted,
+        "detroit_share_of_count": round(d_counted / max(wayne_counted, 1), 3),
         "detroit_margin": round(d_margin, 2),
         "detroit_projected_margin": round(d_proj, 2),
         "detroit_pct_in": round(d_done * 100, 1),
         "detroit_early": d_early,
         "detroit_ed": d_es["ed"] + d_st["ed"],
         "detroit_mode_known": d_mode_known,
+        "theta_observed": None if theta_observed is None else round(theta_observed, 4),
+        "theta_coverage": round(theta_coverage, 3),
         "rest_counted": int(max(rest_counted, 0)),
         "rest_margin": None if rest_margin is None else round(rest_margin, 2),
         "rest_projected_margin": round(rest_proj, 2),
