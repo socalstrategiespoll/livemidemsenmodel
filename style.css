@@ -1,0 +1,388 @@
+/*
+  Palette note: both candidates are Democrats, so red/blue would be actively
+  misleading here. Teal and ochre read as two distinct camps without importing
+  general-election party coding.
+*/
+:root {
+  --paper:      #E8EAE3;
+  --paper-2:    #F1F2EC;
+  --ink:        #14181A;
+  --ink-soft:   #5A625F;
+  --rule:       #C7CCC2;
+  --el:         #1F6F6B;
+  --el-soft:    #A8C6C3;
+  --st:         #96701A;
+  --st-soft:    #D8C48E;
+  --band-90:    #CDD3CA;
+  --band-50:    #B2BCB2;
+  --flag:       #8A3B24;
+
+  --shell: min(1120px, 100% - 2.5rem);
+}
+
+* { box-sizing: border-box; }
+
+html { -webkit-text-size-adjust: 100%; }
+
+body {
+  margin: 0;
+  background: var(--paper);
+  color: var(--ink);
+  font-family: "IBM Plex Sans", system-ui, sans-serif;
+  font-size: 15px;
+  line-height: 1.55;
+}
+
+b { font-weight: 600; }
+
+/* ---------- masthead ---------- */
+
+.masthead {
+  border-bottom: 2px solid var(--ink);
+  background: var(--paper);
+  position: sticky;
+  top: 0;
+  z-index: 20;
+}
+
+.masthead-inner {
+  width: var(--shell);
+  margin: 0 auto;
+  padding: 0.85rem 0;
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 1rem;
+  flex-wrap: wrap;
+}
+
+.race { display: flex; flex-direction: column; gap: 0.1rem; }
+
+.eyebrow {
+  font-family: "IBM Plex Mono", monospace;
+  font-size: 0.7rem;
+  font-weight: 600;
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+}
+
+.firm { font-size: 0.8rem; color: var(--ink-soft); }
+
+.pulse {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  font-family: "IBM Plex Mono", monospace;
+  font-size: 0.72rem;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--ink-soft);
+}
+
+.pulse .dot {
+  width: 7px; height: 7px;
+  border-radius: 50%;
+  background: var(--ink-soft);
+}
+
+.pulse[data-state="live"] .dot {
+  background: var(--el);
+  animation: breathe 2.4s ease-in-out infinite;
+}
+
+.pulse[data-state="stale"] .dot { background: var(--flag); }
+
+@keyframes breathe {
+  0%, 100% { opacity: 1; transform: scale(1); }
+  50%      { opacity: 0.35; transform: scale(0.75); }
+}
+
+.stamp { color: var(--ink); font-variant-numeric: tabular-nums; }
+
+/* ---------- layout ---------- */
+
+main { width: var(--shell); margin: 0 auto; padding: 1.75rem 0 4rem; }
+
+section + section { margin-top: 2.25rem; }
+
+.alert {
+  margin: 0 0 1.5rem;
+  padding: 0.7rem 0.9rem;
+  border-left: 3px solid var(--flag);
+  background: var(--paper-2);
+  color: var(--flag);
+  font-size: 0.85rem;
+}
+
+/* ---------- thesis block ---------- */
+
+.thesis {
+  display: grid;
+  grid-template-columns: minmax(230px, 0.62fr) 1fr;
+  gap: 2rem;
+  align-items: end;
+  padding-bottom: 1.75rem;
+  border-bottom: 1px solid var(--rule);
+}
+
+.verdict-label,
+.stat-label,
+.panel-note b {
+  font-family: "IBM Plex Mono", monospace;
+  font-size: 0.68rem;
+  font-weight: 600;
+  letter-spacing: 0.13em;
+  text-transform: uppercase;
+  color: var(--ink-soft);
+}
+
+.verdict-line { display: flex; align-items: baseline; gap: 0.6rem; flex-wrap: wrap; }
+
+.verdict-name {
+  font-family: "Anton", sans-serif;
+  font-size: clamp(1.9rem, 4.6vw, 3rem);
+  line-height: 0.95;
+  letter-spacing: 0.005em;
+  text-transform: uppercase;
+}
+
+.verdict-number {
+  font-family: "Anton", sans-serif;
+  font-size: clamp(2.4rem, 6.4vw, 4.2rem);
+  line-height: 0.9;
+  font-variant-numeric: tabular-nums;
+}
+
+.verdict-name.el, .verdict-number.el { color: var(--el); }
+.verdict-name.st, .verdict-number.st { color: var(--st); }
+
+.verdict-sub {
+  display: block;
+  margin-top: 0.5rem;
+  font-size: 0.85rem;
+  color: var(--ink-soft);
+}
+
+/* ---------- distribution ---------- */
+
+.dist { margin: 0; }
+
+#dist-svg {
+  width: 100%;
+  height: 168px;
+  display: block;
+  overflow: visible;
+}
+
+.dist-fill { fill: var(--el-soft); opacity: 0.55; }
+.dist-line { fill: none; stroke: var(--ink); stroke-width: 1.6; }
+.dist-zero { stroke: var(--ink); stroke-width: 1; stroke-dasharray: 3 3; opacity: 0.55; }
+.dist-median { stroke: var(--ink); stroke-width: 2; }
+.band-rect-90 { fill: var(--band-90); opacity: 0.55; }
+.band-rect-50 { fill: var(--band-50); opacity: 0.6; }
+
+.dist-axis,
+.dist-key {
+  display: flex;
+  justify-content: space-between;
+  font-family: "IBM Plex Mono", monospace;
+  font-size: 0.68rem;
+  color: var(--ink-soft);
+  font-variant-numeric: tabular-nums;
+}
+
+.dist-axis { margin-top: 0.35rem; border-top: 1px solid var(--rule); padding-top: 0.3rem; }
+
+.dist-key { justify-content: flex-start; gap: 1.1rem; margin-top: 0.5rem; }
+.dist-key span { display: inline-flex; align-items: center; gap: 0.35rem; }
+
+.swatch { width: 10px; height: 10px; display: inline-block; }
+.swatch.band-90 { background: var(--band-90); }
+.swatch.band-50 { background: var(--band-50); }
+.swatch.tick-zero { background: none; border-left: 2px dashed var(--ink); width: 2px; height: 11px; }
+
+/* ---------- stats ---------- */
+
+.split {
+  display: grid;
+  grid-template-columns: 1.3fr 1fr 1fr;
+  gap: 1px;
+  background: var(--rule);
+  border: 1px solid var(--rule);
+}
+
+.stat {
+  background: var(--paper-2);
+  padding: 0.95rem 1.05rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.15rem;
+}
+
+.stat-value {
+  font-family: "Anton", sans-serif;
+  font-size: 1.85rem;
+  line-height: 1.05;
+  font-variant-numeric: tabular-nums;
+}
+
+.stat-wide .stat-value { font-size: 2.4rem; }
+.stat-note { font-size: 0.78rem; color: var(--ink-soft); }
+
+/* ---------- tally ---------- */
+
+.tally-head,
+.tally-foot {
+  display: flex;
+  justify-content: space-between;
+  font-family: "IBM Plex Mono", monospace;
+  font-size: 0.78rem;
+  font-variant-numeric: tabular-nums;
+}
+
+.tally-head { margin-bottom: 0.4rem; font-size: 0.85rem; }
+.tally-name.el { color: var(--el); }
+.tally-name.st { color: var(--st); }
+
+.tally-bar {
+  display: flex;
+  height: 15px;
+  background: var(--rule);
+  overflow: hidden;
+}
+
+.tally-el { background: var(--el); }
+.tally-st { background: var(--st); }
+.tally-el, .tally-st { transition: width 700ms cubic-bezier(0.4, 0, 0.2, 1); }
+
+.tally-foot { margin-top: 0.35rem; color: var(--ink-soft); }
+.tally-other { color: var(--ink-soft); }
+
+/* ---------- panels ---------- */
+
+.panel h2 {
+  font-family: "IBM Plex Mono", monospace;
+  font-size: 0.72rem;
+  font-weight: 600;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  margin: 0 0 0.3rem;
+  padding-bottom: 0.45rem;
+  border-bottom: 2px solid var(--ink);
+}
+
+.panel-note {
+  margin: 0.55rem 0 0.9rem;
+  font-size: 0.82rem;
+  color: var(--ink-soft);
+  max-width: 60ch;
+}
+
+.panel-note b { font-size: 0.7rem; color: var(--ink); }
+
+.table-wrap { overflow-x: auto; }
+
+table.counties {
+  width: 100%;
+  border-collapse: collapse;
+  font-family: "IBM Plex Mono", monospace;
+  font-size: 0.78rem;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
+table.counties th {
+  text-align: left;
+  font-weight: 600;
+  font-size: 0.66rem;
+  letter-spacing: 0.09em;
+  text-transform: uppercase;
+  color: var(--ink-soft);
+  padding: 0.4rem 0.6rem 0.4rem 0;
+  border-bottom: 1px solid var(--rule);
+}
+
+table.counties td {
+  padding: 0.42rem 0.6rem 0.42rem 0;
+  border-bottom: 1px solid var(--rule);
+}
+
+table.counties .num { text-align: right; padding-right: 0; padding-left: 0.9rem; }
+table.counties tbody tr:hover td { background: var(--paper-2); }
+table.counties .name { font-family: "IBM Plex Sans", sans-serif; font-weight: 500; }
+table.counties .empty td { color: var(--ink-soft); text-align: center; padding: 1.4rem 0; }
+
+.v-el { color: var(--el); }
+.v-st { color: var(--st); }
+
+.bar-cell { position: relative; }
+
+.two-up { display: grid; grid-template-columns: 1fr 1fr; gap: 2rem; }
+
+.regions { display: flex; flex-direction: column; }
+
+.region {
+  display: grid;
+  grid-template-columns: 1fr 62px;
+  align-items: center;
+  gap: 0.6rem;
+  padding: 0.4rem 0;
+  border-bottom: 1px solid var(--rule);
+  font-size: 0.85rem;
+}
+
+.region-track { position: relative; height: 9px; background: var(--paper-2); }
+.region-fill { position: absolute; top: 0; height: 9px; transition: all 600ms ease; }
+.region-fill.pos { background: var(--el); }
+.region-fill.neg { background: var(--st); }
+.region-mid { position: absolute; top: -2px; bottom: -2px; width: 1px; background: var(--rule); left: 50%; }
+
+.region-val {
+  font-family: "IBM Plex Mono", monospace;
+  font-size: 0.78rem;
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+}
+
+.region-name { font-size: 0.85rem; }
+
+.diag { display: grid; grid-template-columns: 1fr auto; gap: 0 1rem; margin: 0; }
+.diag dt { padding: 0.4rem 0; border-bottom: 1px solid var(--rule); font-size: 0.85rem; }
+.diag dd {
+  margin: 0;
+  padding: 0.4rem 0;
+  border-bottom: 1px solid var(--rule);
+  text-align: right;
+  font-family: "IBM Plex Mono", monospace;
+  font-size: 0.8rem;
+  font-variant-numeric: tabular-nums;
+}
+
+footer {
+  margin-top: 3rem;
+  padding-top: 1rem;
+  border-top: 1px solid var(--rule);
+}
+
+footer p { margin: 0; font-size: 0.78rem; color: var(--ink-soft); max-width: 72ch; }
+footer a { color: var(--el); }
+
+/* ---------- responsive ---------- */
+
+@media (max-width: 860px) {
+  .thesis { grid-template-columns: 1fr; gap: 1.4rem; align-items: start; }
+  .split { grid-template-columns: 1fr 1fr; }
+  .stat-wide { grid-column: 1 / -1; }
+  .two-up { grid-template-columns: 1fr; gap: 2rem; }
+}
+
+@media (max-width: 520px) {
+  :root { --shell: min(1120px, 100% - 1.6rem); }
+  .split { grid-template-columns: 1fr; }
+}
+
+:focus-visible { outline: 2px solid var(--el); outline-offset: 2px; }
+
+@media (prefers-reduced-motion: reduce) {
+  * { animation: none !important; transition: none !important; }
+}

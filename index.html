@@ -1,0 +1,160 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Michigan Senate Democratic Primary — Live Model</title>
+<meta name="description" content="Live county-level Bayesian projection of the 2026 Michigan US Senate Democratic Primary." />
+<link rel="preconnect" href="https://fonts.googleapis.com" />
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+<link href="https://fonts.googleapis.com/css2?family=Anton&family=IBM+Plex+Mono:wght@400;500;600&family=IBM+Plex+Sans:wght@400;500;600&display=swap" rel="stylesheet" />
+<link rel="stylesheet" href="style.css" />
+</head>
+<body>
+
+<header class="masthead">
+  <div class="masthead-inner">
+    <div class="race">
+      <span class="eyebrow">Michigan · US Senate · Democratic Primary</span>
+      <span class="firm">SoCal Strategies live model</span>
+    </div>
+    <div class="pulse" id="pulse" data-state="connecting">
+      <span class="dot"></span>
+      <span id="pulse-label">connecting</span>
+      <span class="stamp" id="stamp"></span>
+    </div>
+  </div>
+</header>
+
+<main>
+
+  <p class="alert" id="alert" hidden></p>
+
+  <!-- The distribution is the thesis: this is a posterior, not a scoreboard. -->
+  <section class="thesis" id="thesis" aria-live="polite">
+    <div class="verdict">
+      <span class="verdict-label">Projected margin</span>
+      <div class="verdict-line">
+        <span class="verdict-name" id="lead-name">—</span>
+        <span class="verdict-number" id="lead-margin">—</span>
+      </div>
+      <span class="verdict-sub" id="verdict-sub">Waiting for the first results</span>
+    </div>
+
+    <figure class="dist">
+      <svg id="dist-svg" viewBox="0 0 720 200" preserveAspectRatio="none"
+           role="img" aria-labelledby="dist-title">
+        <title id="dist-title">Simulated distribution of the final margin</title>
+        <g id="dist-band"></g>
+        <path id="dist-fill" class="dist-fill" d="" />
+        <path id="dist-line" class="dist-line" d="" />
+        <line id="dist-zero" class="dist-zero" y1="8" y2="176" />
+        <line id="dist-median" class="dist-median" y1="4" y2="176" />
+      </svg>
+      <figcaption class="dist-axis" id="dist-axis"></figcaption>
+      <figcaption class="dist-key">
+        <span><i class="swatch band-90"></i>90% of simulations</span>
+        <span><i class="swatch band-50"></i>50%</span>
+        <span><i class="swatch tick-zero"></i>tie</span>
+      </figcaption>
+    </figure>
+  </section>
+
+  <section class="split">
+    <div class="stat stat-wide">
+      <span class="stat-label">Win probability</span>
+      <span class="stat-value" id="win-prob">—</span>
+      <span class="stat-note" id="win-note">—</span>
+    </div>
+    <div class="stat">
+      <span class="stat-label">Vote counted</span>
+      <span class="stat-value" id="counted">—</span>
+      <span class="stat-note"><span id="precincts">—</span> of precincts in</span>
+    </div>
+    <div class="stat">
+      <span class="stat-label">Projected turnout</span>
+      <span class="stat-value" id="turnout">—</span>
+      <span class="stat-note"><span id="turnout-ratio">—</span> vs pre-election estimate</span>
+    </div>
+  </section>
+
+  <section class="tally">
+    <div class="tally-head">
+      <span class="tally-name el">El-Sayed <b id="es-votes">—</b></span>
+      <span class="tally-name st"><b id="st-votes">—</b> Stevens</span>
+    </div>
+    <div class="tally-bar">
+      <span class="tally-el" id="tally-el"></span>
+      <span class="tally-st" id="tally-st"></span>
+    </div>
+    <div class="tally-foot">
+      <span id="es-pct">—</span>
+      <span class="tally-other" id="other-votes"></span>
+      <span id="st-pct">—</span>
+    </div>
+  </section>
+
+  <section class="panel">
+    <h2>Counties reporting</h2>
+    <p class="panel-note">
+      Sorted by votes counted. <b>Swing</b> is how far the county has come in
+      against what the model expected for it.
+    </p>
+    <div class="table-wrap">
+      <table class="counties">
+        <thead>
+          <tr>
+            <th scope="col">County</th>
+            <th scope="col" class="num">In</th>
+            <th scope="col" class="num">El-Sayed</th>
+            <th scope="col" class="num">Stevens</th>
+            <th scope="col" class="num">Margin</th>
+            <th scope="col" class="num">Expected</th>
+            <th scope="col" class="num">Swing</th>
+          </tr>
+        </thead>
+        <tbody id="county-rows">
+          <tr class="empty"><td colspan="7">No counties reporting yet.</td></tr>
+        </tbody>
+      </table>
+    </div>
+  </section>
+
+  <section class="two-up">
+    <div class="panel">
+      <h2>Regional swing</h2>
+      <p class="panel-note">
+        How far each region is running from its pre-election baseline.
+      </p>
+      <div class="regions" id="regions"></div>
+    </div>
+
+    <div class="panel">
+      <h2>Model state</h2>
+      <p class="panel-note">
+        What the model has learned so far, as opposed to what it assumed.
+      </p>
+      <dl class="diag">
+        <dt>Counties reporting</dt><dd id="d-counties">—</dd>
+        <dt>Statewide swing</dt><dd id="d-shift">—</dd>
+        <dt>Early vs Election Day gap</dt><dd id="d-gap">—</dd>
+        <dt>Counties setting that gap</dt><dd id="d-gapn">—</dd>
+        <dt>50% interval</dt><dd id="d-ci50">—</dd>
+        <dt>90% interval</dt><dd id="d-ci90">—</dd>
+      </dl>
+    </div>
+  </section>
+
+  <footer>
+    <p>
+      Results from <a href="https://civicapi.org">civicAPI</a>. Projections are
+      modeled estimates from a county-level Bayesian simulation, not race calls.
+      Early in the count the model is mostly reporting its prior back to you.
+    </p>
+  </footer>
+
+</main>
+
+<script src="app.js"></script>
+</body>
+</html>

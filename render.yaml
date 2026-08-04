@@ -1,25 +1,22 @@
-# Render blueprint: one model cycle per minute.
+# Render blueprint: one web service that polls civicAPI and serves the projection.
 #
-# Flat layout. Every .py sits at the repository root, so the command is a plain
-# script call rather than a package invocation.
+# Not a cron job. A cron container is destroyed after every run, which wipes the
+# batch history mode_calibration needs, and it has no URL for a website to read.
+# This service does both jobs by staying alive.
 #
-# Set the four R2_* variables in the Render dashboard after the first deploy.
-# They are marked sync:false so they never live in git.
+# Nothing else to configure. No object storage, no API tokens, no secrets.
 #
-# STATE: cron containers are ephemeral. Nothing written to disk survives to the next
-# run, so R2 is not optional. Without it the batch history is lost every minute,
-# mode_calibration has nothing to learn the early/Election Day gap from, and the gap
-# silently sits at its assumed value all night while the projection keeps rendering
-# as though nothing is wrong.
+# Layout is flat: every file sits at the repository root, including the three site
+# files, because GitHub's web uploader does not preserve folders.
 
 services:
-  - type: cron
-    name: mi-model-cron
+  - type: web
+    name: mi-senate-model
     runtime: python
     plan: starter
-    schedule: "* * * * *"
     buildCommand: pip install -r requirements.txt
-    command: python run.py --once
+    startCommand: python server.py
+    healthCheckPath: /health
     envVars:
       - key: PYTHON_VERSION
         value: "3.12.3"
@@ -27,13 +24,11 @@ services:
         value: "84778"
       - key: N_SIMS
         value: "20000"
-      - key: ARCHIVE_HISTORY
-        value: "1"
-      - key: R2_ACCOUNT_ID
-        sync: false
-      - key: R2_ACCESS_KEY_ID
-        sync: false
-      - key: R2_SECRET_ACCESS_KEY
-        sync: false
-      - key: R2_BUCKET
-        sync: false
+      - key: POLL_INTERVAL
+        value: "60"
+
+      # Optional. Set this to a mounted Render disk path (for example /var/data) if
+      # you want batch history to survive a restart. Without it, a restart costs you
+      # the mode gap calibration until counties finish counting again.
+      # - key: STATE_DIR
+      #   value: /var/data
