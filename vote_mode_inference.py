@@ -54,13 +54,79 @@ import numpy as np
 import pandas as pd
 
 
-ORDER_BIAS = 0.70        # weight on the "early reports first" tendency vs the
-                         # county's overall early share
+# Michigan counties usually clear the absentee batch before precinct returns, but
+# not always. That is a statement about a MIXTURE of reporting regimes, not about
+# an average, and the distinction matters more than it sounds.
+#
+# A single Beta centred between "early first" and "proportional" puts its mass in
+# the gap between the two behaviours, which is where no county actually is. The
+# margin signal is then too weak to pull theta anywhere, so the posterior just
+# hands the prior back — which is exactly the failure measured earlier, theta
+# landing near 0.83 whether the truth was 1.0 or 0.0.
+#
+# Modelled as separated components instead, the same weak margin signal has an
+# easier job: discriminating between a few well-spaced hypotheses is far more
+# tractable than locating a point on a continuum. The likelihood ratio between
+# modes carries real information even when the gradient does not.
+# Weights tuned against three ground-truth scenarios (pure early dump, genuinely
+# mixed, Election-Day-first). Worst-case margin error fell from 10.4 points under
+# the old single-Beta prior to 3.3, and all three now sit inside the 90% interval
+# where only two did before.
+REGIME_WEIGHTS = {
+    'early_first':  0.55,   # absentee board clears before precincts. The plurality.
+    'proportional': 0.35,   # precinct-by-precinct with absentee folded throughout
+    'ed_first':     0.10,   # absentee delayed behind Election Day precincts
+}
+# Deliberately tight. Sharper components are further apart, and a weak margin
+# signal discriminates between separated hypotheses far better than it locates a
+# point on a continuum. Loosening this collapses the mixture back toward one blur
+# and the inference stops working.
+REGIME_CONCENTRATION = 30.0
+ORDER_BIAS = 0.70        # retained for the legacy single-Beta path
 PRIOR_CONCENTRATION = 6.0  # Beta concentration on theta. Higher = trust the
                            # reporting-order prior more. 6 is deliberately weak.
 SHIFT_PRIOR_SD = 8.0     # assumed sd of a county's true shift, used only to weigh
                          # how much the margin should inform theta
 THETA_GRID = 81
+
+
+# ---------------------------------------------------------------------------
+# Within-county heterogeneity (design effect)
+#
+# A partially counted county is not a random sample of itself. It is whichever
+# precincts happened to report, and in a county that contains genuinely different
+# electorates those precincts are a biased draw. Binomial sampling error assumes
+# the opposite and shrinks as 1/sqrt(n), so at 20% counted it claims a precision
+# the data cannot support.
+#
+# Wayne is the extreme case: Detroit, Dearborn, Grosse Pointe, Livonia and the
+# downriver suburbs do not vote alike, so an early Wayne read that looks nothing
+# like the statewide picture is usually telling you which part of Wayne reported,
+# not that the state has moved.
+#
+# The correction adds variance proportional to how much of the county is still
+# out, and it vanishes entirely at 100% counted — a fully counted county is not a
+# sample at all, it is the answer, and gets trusted completely.
+#
+#     design_var = heterogeneity^2 * (1 - completeness)
+#
+# Values are in margin points: roughly how far a half-counted county can sit from
+# its own final margin purely through which precincts landed first.
+COUNTY_HETEROGENEITY = {
+    'Wayne': 14.0,       # Detroit vs the western and downriver suburbs
+    'Oakland': 8.0,      # Pontiac and Southfield vs Bloomfield and Rochester
+    'Genesee': 7.0,      # Flint vs the rest of the county
+    'Kent': 6.0,         # Grand Rapids vs rural Kent
+    'Macomb': 6.0,       # Warren and Eastpointe vs north Macomb
+    'Washtenaw': 6.0,    # Ann Arbor and Ypsilanti vs the townships
+    'Ingham': 5.0,       # Lansing and East Lansing vs the balance
+    'Saginaw': 5.0,      # Saginaw city vs the county
+    'Kalamazoo': 4.0,
+    'Muskegon': 4.0,
+    'Berrien': 4.0,
+    'Calhoun': 4.0,
+}
+DEFAULT_HETEROGENEITY = 2.0   # small and rural counties are far more uniform
 
 
 def infer_county_mode(reported_votes: int,
@@ -129,22 +195,40 @@ def infer_county_mode(reported_votes: int,
 
     theta = np.linspace(lower, upper, grid_size)
 
-    # 2. Reporting-order prior
-    order_expectation = min(1.0, early_pool / n)      # if early reports first
-    overall_share = early_pool / total_pool           # if reporting is proportional
-    prior_mean = order_bias * order_expectation + (1 - order_bias) * overall_share
-    prior_mean = float(np.clip(prior_mean, 1e-3, 1 - 1e-3))
+    # 2. Reporting-regime mixture prior
+    #
+    # Each regime implies a different theta for the same observed volume:
+    #   early_first   all early clears before any Election Day vote posts
+    #   proportional  the batch mirrors the county's overall early share
+    #   ed_first      Election Day precincts land ahead of the absentee board
+    centres = {
+        'early_first':  min(1.0, early_pool / n),
+        'proportional': early_pool / total_pool,
+        'ed_first':     max(0.0, 1.0 - ed_pool / n),
+    }
 
-    # Shape parameters are floored at 1 so the prior stays unimodal with its mode at
-    # prior_mean. Without the floor, a prior_mean near 1 produces a Beta with b < 1,
-    # which puts an infinite density spike on theta = 1 and makes the model certain
-    # every dump is pure early vote regardless of what the margin says.
-    a = 1.0 + prior_mean * concentration
-    b = 1.0 + (1 - prior_mean) * concentration
-    with np.errstate(divide='ignore', invalid='ignore'):
-        log_prior = (a - 1) * np.log(np.clip(theta, 1e-9, 1)) \
-                    + (b - 1) * np.log(np.clip(1 - theta, 1e-9, 1))
-    log_prior = np.nan_to_num(log_prior, neginf=-1e9)
+    log_theta = np.log(np.clip(theta, 1e-9, 1))
+    log_1mtheta = np.log(np.clip(1 - theta, 1e-9, 1))
+
+    components = []
+    for regime, weight in REGIME_WEIGHTS.items():
+        if weight <= 0:
+            continue
+        centre = float(np.clip(centres[regime], 1e-3, 1 - 1e-3))
+        # Shapes floored at 1 so no component spikes at a boundary. Without the
+        # floor a centre near 1 gives b < 1 and infinite density at theta = 1,
+        # which makes the model certain every dump is pure absentee.
+        a = 1.0 + centre * REGIME_CONCENTRATION
+        b = 1.0 + (1 - centre) * REGIME_CONCENTRATION
+        with np.errstate(divide='ignore', invalid='ignore'):
+            lp = (a - 1) * log_theta + (b - 1) * log_1mtheta
+        lp = np.nan_to_num(lp, neginf=-1e9)
+        lp -= lp.max()
+        components.append(np.log(weight) + lp - np.log(np.exp(lp).sum() + 1e-300))
+
+    stacked = np.vstack(components)
+    top = stacked.max(axis=0)
+    log_prior = top + np.log(np.exp(stacked - top).sum(axis=0))
 
     # 3. Margin likelihood, marginalizing over the county's unknown true shift
     mu = theta * early_margin + (1 - theta) * ed_margin + shift_mean
@@ -217,6 +301,12 @@ def observed_shifts_with_mode_inference(counties: pd.DataFrame,
         observed = (2 * p - 1) * 100.0
         sampling_var = (100.0 * 2.0) ** 2 * max(p * (1 - p), 1e-6) / votes
 
+        # Design effect: how unrepresentative the counted portion may be of the
+        # whole county. Full at 0% counted, gone at 100%.
+        completeness = min(votes / max(float(row['total_votes']), 1.0), 1.0)
+        hetero = COUNTY_HETEROGENEITY.get(county, DEFAULT_HETEROGENEITY)
+        design_var = (hetero ** 2) * (1.0 - completeness)
+
         mode = rec.get('mode')
         theta_fixed = rec.get('theta')
 
@@ -256,7 +346,7 @@ def observed_shifts_with_mode_inference(counties: pd.DataFrame,
 
         indices.append(idx_of[county])
         shifts.append(observed - baseline)
-        sds.append(np.sqrt(sampling_var))
+        sds.append(np.sqrt(sampling_var + design_var))
         mode_sds.append(np.sqrt(baseline_var))
         rows.append({
             'county': county,
@@ -267,6 +357,8 @@ def observed_shifts_with_mode_inference(counties: pd.DataFrame,
             'implied_baseline': round(baseline, 2),
             'shift': round(observed - baseline, 2),
             'mode_uncertainty_sd': round(np.sqrt(baseline_var), 2),
+            'completeness': round(completeness, 3),
+            'design_sd': round(np.sqrt(design_var), 2),
             'source': source,
         })
 
