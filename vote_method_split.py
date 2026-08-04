@@ -36,9 +36,16 @@ import pandas as pd
 from michigan_primary_model import build_michigan_county_data
 
 
-TARGET_OVERALL_MARGIN = 14.53   # El-Sayed statewide margin, points
-TARGET_EARLY_MARGIN = 8.00      # El-Sayed margin among early/absentee votes, points
-TARGET_EARLY_SHARE = 0.70       # share of all votes cast before Election Day
+TARGET_OVERALL_MARGIN = 13.79   # El-Sayed statewide margin, points
+TARGET_EARLY_MARGIN = 4.00      # El-Sayed margin among early/absentee votes, points
+TARGET_EARLY_SHARE = 0.6268     # 890,000 of a projected 1,419,960 cast before
+                                # Election Day.
+#
+# The two mode margins are not free of each other. With the early share fixed at
+# 62.68% and the statewide topline held at +13.79, pushing the early number down
+# forces the Election Day number up by the inverse of the share ratio: every point
+# off the early vote costs 0.6268/0.3732 = 1.68 points added to Election Day.
+# Early +4.00 therefore implies Election Day +30.23 and a mode gap of 26.2 points.
 
 EARLY_SHARE_FLOOR = 0.55
 EARLY_SHARE_CEILING = 0.78
