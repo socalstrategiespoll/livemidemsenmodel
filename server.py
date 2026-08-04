@@ -281,7 +281,7 @@ def poller() -> None:
             # down which half of Wayne has actually reported. Never allowed to
             # break the cycle: an unreachable Detroit feed just means Wayne falls
             # back to county-level inference.
-            wayne_detail, override = None, None
+            wayne_detail, override, theta_override = None, None, None
             try:
                 d = detroit.fetch_detroit()
                 if d:
@@ -294,11 +294,14 @@ def poller() -> None:
                             float(wrow['ed_votes']))
                         if wayne_detail.get('available'):
                             override = {'Wayne': wayne_detail['remainder_margin']}
+                            if wayne_detail.get('theta_observed') is not None:
+                                theta_override = {'Wayne': wayne_detail['theta_observed']}
             except Exception as exc:
                 print("   Detroit feed unavailable: %s" % exc, flush=True)
 
             result = hm.simulate(counties, base_table, reported=None, feed=feed,
-                                 n_sims=N_SIMS, remainder_override=override)
+                                 n_sims=N_SIMS, remainder_override=override,
+                                 theta_override=theta_override)
             result['wayne_detail'] = wayne_detail
             output = build_output(result, parsed, RACE_ID)
             STATE.publish(output)
