@@ -263,6 +263,7 @@ def simulate(counties: pd.DataFrame = None,
              reported: dict = None,
              feed: 'VoteFeed' = None,
              remainder_override: dict = None,
+             theta_override: dict = None,
              n_sims: int = 20000,
              seed: int = None,
              **cov_kwargs) -> dict:
@@ -314,6 +315,16 @@ def simulate(counties: pd.DataFrame = None,
             reported = feed.as_reported_dict(method_table)
 
     reported = reported or {}
+
+    # An OBSERVED vote-mode split beats anything the inference can produce. Where
+    # a sub-county feed reports mode directly (Detroit inside Wayne), theta is
+    # fixed here and vote_mode_inference skips its regime mixture entirely for
+    # that county.
+    if theta_override:
+        reported = {k: dict(v) for k, v in reported.items()}
+        for county, value in theta_override.items():
+            if county in reported and value is not None:
+                reported[county]['theta'] = float(value)
 
     sigma = build_covariance(counties, **cov_kwargs)
     turnout_arr = counties['turnout'].values.astype(float)
@@ -461,6 +472,7 @@ def simulate(counties: pd.DataFrame = None,
         'remaining_ed': pd.Series(rem_ed, index=counties['county']),
         'county_theta': pd.Series(theta, index=counties['county']),
         'remainder_override': dict(remainder_override or {}),
+        'theta_override': dict(theta_override or {}),
         'calibration': calibration,
         'turnout_calibration': turnout_calibration,
         'projected_turnout': int(counties['turnout'].sum()),
