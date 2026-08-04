@@ -375,7 +375,40 @@ def simulate(counties: pd.DataFrame = None,
 
     remaining = np.maximum(turnout * (1 - pct_in), 0.0)
 
-    projected_margin = np.clip(baseline[None, :] + draws, -100.0, 100.0)
+    # The uncounted remainder is NOT the county's blended margin.
+    #
+    # If Wayne's entire absentee batch is in, the 26% still outstanding is Election
+    # Day vote, and Election Day is projected 21 points better for El-Sayed than the
+    # blend. Projecting that remainder at the blended margin understates him by a
+    # fifth of the county. This is the whole reason the mode split exists, and it has
+    # to be applied to what is LEFT, not just to what arrived.
+    #
+    # Mode composition of the remainder comes from subtracting the counted vote,
+    # split by the inferred theta, from each mode's pool.
+    method = method_table.set_index('county')
+    early_pool = method['early_votes'].reindex(counties['county']).values.astype(float)
+    ed_pool = method['ed_votes'].reindex(counties['county']).values.astype(float)
+    early_margin = method['early_margin'].reindex(counties['county']).values.astype(float)
+    ed_margin = method['ed_margin'].reindex(counties['county']).values.astype(float)
+
+    theta = np.ones(len(counties))  # irrelevant where nothing is counted
+    if len(mode_diag) > 0:
+        theta_by_county = dict(zip(mode_diag['county'], mode_diag['theta_mean']))
+        for county, value in theta_by_county.items():
+            if county in idx_of:
+                theta[idx_of[county]] = float(value)
+
+    counted_votes = counted_el_sayed + counted_stevens
+    rem_early = np.maximum(early_pool - theta * counted_votes, 0.0)
+    rem_ed = np.maximum(ed_pool - (1.0 - theta) * counted_votes, 0.0)
+    rem_pool = rem_early + rem_ed
+
+    remainder_baseline = np.where(
+        rem_pool > 0,
+        (rem_early * early_margin + rem_ed * ed_margin) / np.maximum(rem_pool, 1e-9),
+        baseline)
+
+    projected_margin = np.clip(remainder_baseline[None, :] + draws, -100.0, 100.0)
     share_el_sayed = (50.0 + projected_margin / 2.0) / 100.0
 
     rem_el_sayed = remaining[None, :] * share_el_sayed
@@ -413,6 +446,11 @@ def simulate(counties: pd.DataFrame = None,
         'mode_inference': mode_diag,
         'n_reported': len(idx),
         'joint_passes': n_passes,
+        'remainder_baseline': pd.Series(remainder_baseline, index=counties['county']),
+        'remaining_votes': pd.Series(remaining, index=counties['county']),
+        'remaining_early': pd.Series(rem_early, index=counties['county']),
+        'remaining_ed': pd.Series(rem_ed, index=counties['county']),
+        'county_theta': pd.Series(theta, index=counties['county']),
         'calibration': calibration,
         'turnout_calibration': turnout_calibration,
         'projected_turnout': int(counties['turnout'].sum()),

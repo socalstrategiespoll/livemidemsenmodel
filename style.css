@@ -386,3 +386,141 @@ footer a { color: var(--el); }
 @media (prefers-reduced-motion: reduce) {
   * { animation: none !important; transition: none !important; }
 }
+
+/* ---------- maps ---------- */
+
+.map-head {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 1rem;
+  flex-wrap: wrap;
+  border-bottom: 2px solid var(--ink);
+  padding-bottom: 0.45rem;
+}
+
+.map-head h2 { border: 0; padding: 0; margin: 0; }
+
+.map-toggle { display: flex; gap: 1px; background: var(--rule); border: 1px solid var(--rule); }
+
+.map-toggle button {
+  appearance: none;
+  border: 0;
+  background: var(--paper-2);
+  color: var(--ink-soft);
+  font-family: "IBM Plex Mono", monospace;
+  font-size: 0.68rem;
+  font-weight: 600;
+  letter-spacing: 0.09em;
+  text-transform: uppercase;
+  padding: 0.38rem 0.7rem;
+  cursor: pointer;
+}
+
+.map-toggle button.on { background: var(--ink); color: var(--paper); }
+
+.map-body {
+  display: grid;
+  grid-template-columns: 1fr minmax(230px, 300px);
+  gap: 1.75rem;
+  align-items: start;
+  margin-top: 0.5rem;
+}
+
+.map-figure { margin: 0; position: relative; }
+
+#map-svg { width: 100%; height: auto; display: block; }
+
+#map-svg path {
+  stroke: var(--paper);
+  stroke-width: 0.6;
+  stroke-linejoin: round;
+  cursor: pointer;
+  transition: fill 500ms ease;
+}
+
+#map-svg path:hover, #map-svg path.sel {
+  stroke: var(--ink);
+  stroke-width: 1.6;
+}
+
+.map-tip {
+  position: absolute;
+  pointer-events: none;
+  background: var(--ink);
+  color: var(--paper);
+  font-family: "IBM Plex Mono", monospace;
+  font-size: 0.7rem;
+  padding: 0.3rem 0.5rem;
+  white-space: nowrap;
+  transform: translate(-50%, -140%);
+  z-index: 5;
+}
+
+.legend { margin-bottom: 1.25rem; }
+
+.legend-scale { display: flex; height: 13px; }
+.legend-scale span { flex: 1; }
+
+.legend-ends {
+  display: flex;
+  justify-content: space-between;
+  font-family: "IBM Plex Mono", monospace;
+  font-size: 0.66rem;
+  color: var(--ink-soft);
+  margin-top: 0.25rem;
+}
+
+.legend-none {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+  margin-top: 0.55rem;
+  font-size: 0.72rem;
+  color: var(--ink-soft);
+}
+
+.legend-none i {
+  width: 13px; height: 13px;
+  background: var(--rule);
+  display: inline-block;
+}
+
+.map-detail {
+  border-top: 2px solid var(--ink);
+  padding-top: 0.6rem;
+  min-height: 220px;
+}
+
+.map-hint { color: var(--ink-soft); font-size: 0.82rem; margin: 0.3rem 0 0; }
+
+.map-detail h3 {
+  font-family: "Anton", sans-serif;
+  font-size: 1.35rem;
+  margin: 0 0 0.5rem;
+  text-transform: uppercase;
+}
+
+.map-detail dl { display: grid; grid-template-columns: 1fr auto; gap: 0; margin: 0; }
+.map-detail dt { font-size: 0.78rem; padding: 0.28rem 0; border-bottom: 1px solid var(--rule); }
+.map-detail dd {
+  margin: 0;
+  padding: 0.28rem 0;
+  border-bottom: 1px solid var(--rule);
+  text-align: right;
+  font-family: "IBM Plex Mono", monospace;
+  font-size: 0.75rem;
+  font-variant-numeric: tabular-nums;
+}
+
+.map-detail .split-note {
+  margin: 0.7rem 0 0;
+  font-size: 0.74rem;
+  color: var(--ink-soft);
+  line-height: 1.45;
+}
+
+@media (max-width: 860px) {
+  .map-body { grid-template-columns: 1fr; }
+  .map-detail { min-height: 0; }
+}

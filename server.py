@@ -162,33 +162,68 @@ def build_output(result: dict, parsed: dict, race_id: int) -> dict:
 
 
 def build_county_table(result: dict, parsed: dict) -> list:
-    """Per-county rows for the site: reported margin, expectation, and the gap."""
+    """
+    Per-county rows covering ALL 83, not just the ones reporting.
+
+    The maps need every county every cycle: the results map has to draw the ones
+    with no results as no-results rather than omitting them, and the remainder map
+    is mostly about counties that have not finished.
+    """
     table = result["method_table"].set_index("county")
     shifts = result["county_posterior_mean_shift"]
-    rows = []
+    remainder = result["remainder_baseline"]
+    remaining = result["remaining_votes"]
+    rem_early = result["remaining_early"]
+    rem_ed = result["remaining_ed"]
+    theta = result["county_theta"]
+    reported = parsed.get("counties", {})
 
-    for county, record in parsed.get("counties", {}).items():
-        if county not in table.index:
-            continue
-        votes = record["el_sayed"] + record["stevens"]
-        if votes <= 0:
-            continue
+    rows = []
+    for county in table.index:
         row = table.loc[county]
-        margin = (record["el_sayed"] - record["stevens"]) / votes * 100.0
+        total = float(row["total_votes"])
+        record = reported.get(county)
+        counted = (record["el_sayed"] + record["stevens"]) if record else 0
+
+        margin = None
+        if counted > 0:
+            margin = round((record["el_sayed"] - record["stevens"]) / counted * 100.0, 1)
+
+        left = float(remaining.get(county, total))
+        rem_margin = float(remainder.get(county, row["blended_margin"]))
+
+        # Where the county lands once the remainder is added in at its projected
+        # margin. This is the number the projection is actually built on.
+        if counted > 0 and left >= 0:
+            net = (record["el_sayed"] - record["stevens"]) + left * rem_margin / 100.0
+            final = round(net / max(counted + left, 1.0) * 100.0, 1)
+        else:
+            final = round(rem_margin, 1)
+
         rows.append({
             "county": county,
-            "el_sayed": record["el_sayed"],
-            "stevens": record["stevens"],
-            "votes": votes,
-            "margin": round(margin, 1),
+            "reporting": counted > 0,
+            "el_sayed": record["el_sayed"] if record else 0,
+            "stevens": record["stevens"] if record else 0,
+            "votes": counted,
+            "margin": margin,
             "expected_blended": round(float(row["blended_margin"]), 1),
-            "vs_expected": round(margin - float(row["blended_margin"]), 1),
+            "vs_expected": None if margin is None else round(margin - float(row["blended_margin"]), 1),
             "shift": round(float(shifts.get(county, 0.0)), 1),
-            "pct_precincts": record.get("percent_precincts"),
-            "pct_of_projected": round(votes / float(row["total_votes"]) * 100, 1),
+            "pct_precincts": record.get("percent_precincts") if record else None,
+            "pct_of_projected": round(counted / max(total, 1.0) * 100, 1),
+            "projected_total": int(total),
+            "remaining": int(round(left)),
+            "remaining_early": int(round(float(rem_early.get(county, 0.0)))),
+            "remaining_ed": int(round(float(rem_ed.get(county, 0.0)))),
+            "remainder_margin": round(rem_margin, 1),
+            "early_margin": round(float(row["early_margin"]), 1),
+            "ed_margin": round(float(row["ed_margin"]), 1),
+            "theta": round(float(theta.get(county, 1.0)), 2),
+            "projected_final": final,
         })
 
-    rows.sort(key=lambda r: -r["votes"])
+    rows.sort(key=lambda r: (-r["votes"], -r["projected_total"]))
     return rows
 
 

@@ -94,6 +94,36 @@
     </div>
   </section>
 
+
+  <section class="maps">
+    <div class="map-head">
+      <h2>Michigan by county</h2>
+      <div class="map-toggle" role="tablist" aria-label="Map view">
+        <button id="tab-results" role="tab" aria-selected="true" class="on">Counted so far</button>
+        <button id="tab-remaining" role="tab" aria-selected="false">Vote still out</button>
+      </div>
+    </div>
+
+    <p class="panel-note" id="map-note"></p>
+
+    <div class="map-body">
+      <figure class="map-figure">
+        <svg id="map-svg" viewBox="0 0 620 760" role="img" aria-labelledby="map-title">
+          <title id="map-title">Michigan counties</title>
+          <g id="map-shapes"></g>
+        </svg>
+        <div class="map-tip" id="map-tip" hidden></div>
+      </figure>
+
+      <aside class="map-side">
+        <div class="legend" id="legend"></div>
+        <div class="map-detail" id="map-detail">
+          <p class="map-hint">Hover or tap a county.</p>
+        </div>
+      </aside>
+    </div>
+  </section>
+
   <section class="panel">
     <h2>Counties reporting</h2>
     <p class="panel-note">

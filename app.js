@@ -111,6 +111,162 @@ function drawDistribution(p) {
     `<span>${signed(d.hi)}</span>`;
 }
 
+
+// ---------------------------------------------------------------------------
+// Maps
+//
+// Geometry is pre-projected to SVG path strings at build time (Albers conic,
+// standard parallels 42.5 and 47), so the browser needs no projection library
+// and the whole state is 18 KB.
+//
+// Two views, and they answer different questions:
+//   "Counted so far"  - the margin in votes already reported
+//   "Vote still out"  - the margin the model projects for the REMAINDER
+//
+// The second is the interesting one. A county whose absentee batch is fully in
+// still has its Election Day vote outstanding, and Election Day runs about 21
+// points better for El-Sayed than the county's blended average. So a county that
+// looks close on the left map can have a lopsided remainder on the right.
+// ---------------------------------------------------------------------------
+
+let GEO = null;
+let MAP_MODE = "results";
+let LAST_COUNTIES = [];
+let PINNED = null;
+
+const MAP_SCALE = 30; // margin points at which the color ramp saturates
+
+function rampColor(margin) {
+  if (margin === null || margin === undefined) return "#C7CCC2";
+  const t = Math.max(-1, Math.min(1, margin / MAP_SCALE));
+  // Two-hue diverging ramp through the paper color, so a tied county reads as
+  // neutral rather than as a third category.
+  const mid = [232, 234, 227];
+  const end = t >= 0 ? [31, 111, 107] : [150, 112, 26];
+  const k = Math.pow(Math.abs(t), 0.75);
+  const c = mid.map((m, i) => Math.round(m + (end[i] - m) * k));
+  return `rgb(${c[0]},${c[1]},${c[2]})`;
+}
+
+async function loadGeo() {
+  try {
+    const res = await fetch("mi-counties.json");
+    GEO = await res.json();
+    buildMap();
+  } catch (err) {
+    document.querySelector(".maps").hidden = true;
+  }
+}
+
+function buildMap() {
+  if (!GEO) return;
+  const g = $("map-shapes");
+  g.innerHTML = "";
+  Object.entries(GEO.paths).forEach(([county, d]) => {
+    const p = document.createElementNS("http://www.w3.org/2000/svg", "path");
+    p.setAttribute("d", d);
+    p.setAttribute("fill", "#C7CCC2");
+    p.dataset.county = county;
+    p.addEventListener("mouseenter", (e) => showTip(county, e));
+    p.addEventListener("mousemove", (e) => moveTip(e));
+    p.addEventListener("mouseleave", hideTip);
+    p.addEventListener("click", () => { PINNED = county; paintDetail(county); });
+    g.appendChild(p);
+  });
+  paintMap();
+}
+
+function countyRow(name) {
+  return LAST_COUNTIES.find((r) => r.county === name);
+}
+
+function mapValue(row) {
+  if (!row) return null;
+  if (MAP_MODE === "results") return row.reporting ? row.margin : null;
+  return row.remaining > 0 ? row.remainder_margin : null;
+}
+
+function paintMap() {
+  if (!GEO) return;
+  $("map-shapes").querySelectorAll("path").forEach((p) => {
+    p.setAttribute("fill", rampColor(mapValue(countyRow(p.dataset.county))));
+    p.classList.toggle("sel", p.dataset.county === PINNED);
+  });
+
+  $("map-note").textContent = MAP_MODE === "results"
+    ? "Margin in the votes each county has already reported. Grey counties have not reported."
+    : "Margin the model projects for the vote each county has NOT yet counted. Grey counties are finished.";
+
+  const stops = [-1, -0.6, -0.3, 0, 0.3, 0.6, 1]
+    .map((t) => `<span style="background:${rampColor(t * MAP_SCALE)}"></span>`).join("");
+  $("legend").innerHTML =
+    `<div class="legend-scale">${stops}</div>
+     <div class="legend-ends"><span>Stevens +${MAP_SCALE}</span><span>tie</span><span>El-Sayed +${MAP_SCALE}</span></div>
+     <div class="legend-none"><i></i>${MAP_MODE === "results" ? "no results yet" : "counting complete"}</div>`;
+
+  if (PINNED) paintDetail(PINNED);
+}
+
+function showTip(county, e) {
+  const row = countyRow(county);
+  const v = mapValue(row);
+  $("map-tip").textContent =
+    `${county}  ${v === null ? (MAP_MODE === "results" ? "no results" : "complete") : signed(v)}`;
+  $("map-tip").hidden = false;
+  moveTip(e);
+  if (!PINNED) paintDetail(county);
+}
+
+function moveTip(e) {
+  const box = $("map-svg").getBoundingClientRect();
+  $("map-tip").style.left = (e.clientX - box.left) + "px";
+  $("map-tip").style.top = (e.clientY - box.top) + "px";
+}
+
+function hideTip() { $("map-tip").hidden = true; }
+
+function paintDetail(county) {
+  const r = countyRow(county);
+  if (!r) return;
+  const cls = (v) => (v >= 0 ? "v-el" : "v-st");
+  const pct = r.remaining && (r.remaining_early + r.remaining_ed)
+    ? Math.round(r.remaining_early / (r.remaining_early + r.remaining_ed) * 100)
+    : 0;
+
+  $("map-detail").innerHTML = `
+    <h3>${county}</h3>
+    <dl>
+      <dt>Counted</dt><dd>${num.format(r.votes)} of ${num.format(r.projected_total)}</dd>
+      <dt>Margin so far</dt>
+      <dd class="${r.margin === null ? "" : cls(r.margin)}">${r.margin === null ? "—" : signed(r.margin)}</dd>
+      <dt>Pre-election baseline</dt><dd>${signed(r.expected_blended)}</dd>
+      <dt>Still out</dt><dd>${num.format(r.remaining)}</dd>
+      <dt>Remainder projects</dt>
+      <dd class="${cls(r.remainder_margin)}">${signed(r.remainder_margin)}</dd>
+      <dt>County lands at</dt>
+      <dd class="${cls(r.projected_final)}">${signed(r.projected_final)}</dd>
+    </dl>
+    <p class="split-note">
+      Of what is left, about ${pct}% is early vote and ${100 - pct}% Election Day.
+      This county's early vote is modeled at ${signed(r.early_margin)} and its
+      Election Day vote at ${signed(r.ed_margin)}.
+    </p>`;
+}
+
+function initMapTabs() {
+  const set = (mode) => {
+    MAP_MODE = mode;
+    const isResults = mode === "results";
+    $("tab-results").classList.toggle("on", isResults);
+    $("tab-remaining").classList.toggle("on", !isResults);
+    $("tab-results").setAttribute("aria-selected", String(isResults));
+    $("tab-remaining").setAttribute("aria-selected", String(!isResults));
+    paintMap();
+  };
+  $("tab-results").addEventListener("click", () => set("results"));
+  $("tab-remaining").addEventListener("click", () => set("remaining"));
+}
+
 // ---------------------------------------------------------------------------
 
 let lastMargin = null;
@@ -133,9 +289,10 @@ function animateMargin(el, to) {
   requestAnimationFrame(tick);
 }
 
-function renderCounties(rows) {
+function renderCounties(all) {
+  const rows = (all || []).filter((r) => r.reporting);
   const body = $("county-rows");
-  if (!rows || !rows.length) {
+  if (!rows.length) {
     body.innerHTML = `<tr class="empty"><td colspan="7">No counties reporting yet.</td></tr>`;
     return;
   }
@@ -222,7 +379,9 @@ function render(data) {
     ? `${num.format(c.other)} to other candidates, excluded from the margin`
     : "";
 
+  LAST_COUNTIES = data.counties || [];
   renderCounties(data.counties);
+  paintMap();
   renderRegions(data.regional_shift || {});
 
   $("d-counties").textContent = d.counties_reporting;
@@ -272,5 +431,7 @@ async function tick() {
   }
 }
 
+initMapTabs();
+loadGeo();
 tick();
 setInterval(tick, REFRESH_MS);
