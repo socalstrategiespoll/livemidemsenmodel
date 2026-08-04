@@ -51,6 +51,7 @@ from vote_method_split import build_vote_method_table
 from mode_calibration import VoteFeed
 from civicapi_feed import fetch_race, parse_payload, MICHIGAN_SENATE_DEM_PRIMARY
 import detroit_split as detroit
+import clarity_feed as clarity
 import hierarchical_model as hm
 
 
@@ -158,6 +159,7 @@ def build_output(result: dict, parsed: dict, race_id: int) -> dict:
             "candidate_names": parsed.get("candidate_names"),
         },
         "wayne_detail": result.get("wayne_detail"),
+        "clarity_detail": result.get("clarity_detail"),
         "regional_shift": {k: round(v, 2) for k, v
                            in result["region_posterior_shift"].items()},
     }
@@ -299,10 +301,34 @@ def poller() -> None:
             except Exception as exc:
                 print("   Detroit feed unavailable: %s" % exc, flush=True)
 
+            # Clarity counties publish vote type directly, so their theta is
+            # observed rather than inferred. Gated on agreeing with civicAPI on
+            # how much is counted, for the same reason Detroit is: two feeds
+            # refreshing independently can describe different sets of ballots.
+            clarity_detail = {}
+            try:
+                clarity_raw = clarity.fetch_all()
+                if clarity_raw:
+                    obs = clarity.theta_overrides(clarity_raw, parsed['counties'])
+                    if obs:
+                        theta_override = dict(theta_override or {})
+                        theta_override.update(obs)
+                    clarity_detail = {
+                        c: {'theta': round(v['theta'], 4),
+                            'counted': v['counted'],
+                            'margin': round(v['margin'], 2),
+                            'applied': c in obs}
+                        for c, v in clarity_raw.items()}
+                    print("   Clarity: %d counties, %d applied"
+                          % (len(clarity_raw), len(obs)), flush=True)
+            except Exception as exc:
+                print("   Clarity unavailable: %s" % exc, flush=True)
+
             result = hm.simulate(counties, base_table, reported=None, feed=feed,
                                  n_sims=N_SIMS, remainder_override=override,
                                  theta_override=theta_override)
             result['wayne_detail'] = wayne_detail
+            result['clarity_detail'] = clarity_detail
             output = build_output(result, parsed, RACE_ID)
             STATE.publish(output)
             save_state(feed)
