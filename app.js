@@ -115,32 +115,97 @@ function drawDistribution(p) {
 // ---------------------------------------------------------------------------
 // Maps
 //
-// Geometry is pre-projected to SVG path strings at build time (Albers conic,
-// standard parallels 42.5 and 47), so the browser needs no projection library
-// and the whole state is 18 KB.
+// Geometry is real GeoJSON in lat/lon (CRS84) with FIPS codes, projected here in
+// the browser with an Albers conic tuned to Michigan. No mapping library and no
+// CDN: on results night a third-party script that fails to load is a blank page,
+// and the projection is thirty lines.
 //
-// Two views, and they answer different questions:
-//   "Counted so far"  - the margin in votes already reported
-//   "Vote still out"  - the margin the model projects for the REMAINDER
+// Two maps, side by side, because the comparison is the point:
+//   COUNTED   the margin in votes already reported
+//   STILL OUT the margin the model projects for each county's REMAINDER
 //
-// The second is the interesting one. A county whose absentee batch is fully in
+// They diverge for a specific reason. A county whose absentee batch is fully in
 // still has its Election Day vote outstanding, and Election Day runs about 21
 // points better for El-Sayed than the county's blended average. So a county that
-// looks close on the left map can have a lopsided remainder on the right.
+// looks close on the left can have a lopsided remainder on the right.
+//
+// Zoom and pan are shared across both maps so the two views never drift out of
+// register with each other.
 // ---------------------------------------------------------------------------
 
+const MAP_W = 620;
+const MAP_H = 700;
+const MAP_SCALE = 30;  // margin points at which the color ramp saturates
+
+const MAPS = [
+  { id: "counted", label: "Counted so far",
+    note: "Margin in the votes already reported. Grey has not reported." },
+  { id: "remaining", label: "Still out",
+    note: "Margin projected for the vote not yet counted. Grey is finished." },
+];
+
 let GEO = null;
-let MAP_MODE = "results";
+let PATHS = {};              // county -> svg path string
 let LAST_COUNTIES = [];
 let PINNED = null;
+let VIEW = { x: 0, y: 0, k: 1 };
 
-const MAP_SCALE = 30; // margin points at which the color ramp saturates
+// --- projection -------------------------------------------------------------
+
+function albers() {
+  const LAT0 = 44.9, LON0 = -85.6, P1 = 42.5, P2 = 47.0;
+  const rad = Math.PI / 180;
+  const n = 0.5 * (Math.sin(P1 * rad) + Math.sin(P2 * rad));
+  const C = Math.cos(P1 * rad) ** 2 + 2 * n * Math.sin(P1 * rad);
+  const rho0 = Math.sqrt(C - 2 * n * Math.sin(LAT0 * rad)) / n;
+  return ([lon, lat]) => {
+    const theta = n * (lon - LON0) * rad;
+    const rho = Math.sqrt(Math.max(C - 2 * n * Math.sin(lat * rad), 1e-12)) / n;
+    return [rho * Math.sin(theta), rho0 - rho * Math.cos(theta)];
+  };
+}
+
+function buildPaths(geo) {
+  const project = albers();
+  const projected = geo.features.map((f) => ({
+    name: f.properties.name,
+    polys: f.geometry.coordinates.map((poly) => poly.map((r) => r.map(project))),
+  }));
+
+  let minx = Infinity, maxx = -Infinity, miny = Infinity, maxy = -Infinity;
+  projected.forEach((f) => f.polys.forEach((poly) => poly.forEach((r) => r.forEach(([x, y]) => {
+    if (x < minx) minx = x;
+    if (x > maxx) maxx = x;
+    if (y < miny) miny = y;
+    if (y > maxy) maxy = y;
+  }))));
+
+  const pad = 8;
+  const k = Math.min((MAP_W - 2 * pad) / (maxx - minx), (MAP_H - 2 * pad) / (maxy - miny));
+  const ox = (MAP_W - (maxx - minx) * k) / 2;
+  const oy = (MAP_H - (maxy - miny) * k) / 2;
+
+  const out = {};
+  projected.forEach((f) => {
+    let d = "";
+    f.polys.forEach((poly) => poly.forEach((r) => {
+      if (r.length < 4) return;
+      d += "M" + r.map(([x, y]) =>
+        ((x - minx) * k + ox).toFixed(1) + " " + ((maxy - y) * k + oy).toFixed(1)
+      ).join("L") + "Z";
+    }));
+    out[f.name] = d;
+  });
+  return out;
+}
+
+// --- color ------------------------------------------------------------------
 
 function rampColor(margin) {
   if (margin === null || margin === undefined) return "#C7CCC2";
   const t = Math.max(-1, Math.min(1, margin / MAP_SCALE));
-  // Two-hue diverging ramp through the paper color, so a tied county reads as
-  // neutral rather than as a third category.
+  // Diverging ramp that passes through the paper color, so a tied county reads
+  // as neutral rather than as a third category.
   const mid = [232, 234, 227];
   const end = t >= 0 ? [31, 111, 107] : [150, 112, 26];
   const k = Math.pow(Math.abs(t), 0.75);
@@ -148,92 +213,106 @@ function rampColor(margin) {
   return `rgb(${c[0]},${c[1]},${c[2]})`;
 }
 
-async function loadGeo() {
-  try {
-    const res = await fetch("mi-counties.json");
-    GEO = await res.json();
-    buildMap();
-  } catch (err) {
-    document.querySelector(".maps").hidden = true;
-  }
-}
-
-function buildMap() {
-  if (!GEO) return;
-  const g = $("map-shapes");
-  g.innerHTML = "";
-  Object.entries(GEO.paths).forEach(([county, d]) => {
-    const p = document.createElementNS("http://www.w3.org/2000/svg", "path");
-    p.setAttribute("d", d);
-    p.setAttribute("fill", "#C7CCC2");
-    p.dataset.county = county;
-    p.addEventListener("mouseenter", (e) => showTip(county, e));
-    p.addEventListener("mousemove", (e) => moveTip(e));
-    p.addEventListener("mouseleave", hideTip);
-    p.addEventListener("click", () => { PINNED = county; paintDetail(county); });
-    g.appendChild(p);
-  });
-  paintMap();
-}
-
 function countyRow(name) {
   return LAST_COUNTIES.find((r) => r.county === name);
 }
 
-function mapValue(row) {
+function mapValue(row, mode) {
   if (!row) return null;
-  if (MAP_MODE === "results") return row.reporting ? row.margin : null;
+  if (mode === "counted") return row.reporting ? row.margin : null;
   return row.remaining > 0 ? row.remainder_margin : null;
 }
 
-function paintMap() {
-  if (!GEO) return;
-  $("map-shapes").querySelectorAll("path").forEach((p) => {
-    p.setAttribute("fill", rampColor(mapValue(countyRow(p.dataset.county))));
-    p.classList.toggle("sel", p.dataset.county === PINNED);
+// --- build ------------------------------------------------------------------
+
+async function loadGeo() {
+  try {
+    const res = await fetch("mi-counties.geojson");
+    GEO = await res.json();
+    PATHS = buildPaths(GEO);
+    MAPS.forEach(buildOne);
+    paintMaps();
+  } catch (err) {
+    const el = document.querySelector(".maps");
+    if (el) el.hidden = true;
+  }
+}
+
+function buildOne(map) {
+  const g = document.getElementById("shapes-" + map.id);
+  g.innerHTML = "";
+  Object.entries(PATHS).forEach(([county, d]) => {
+    const p = document.createElementNS("http://www.w3.org/2000/svg", "path");
+    p.setAttribute("d", d);
+    p.setAttribute("fill", "#C7CCC2");
+    p.dataset.county = county;
+    p.addEventListener("pointerenter", () => hover(county, map.id));
+    p.addEventListener("pointerleave", () => hover(null, map.id));
+    p.addEventListener("click", (e) => {
+      e.stopPropagation();
+      PINNED = PINNED === county ? null : county;
+      paintDetail(PINNED || county);
+      markSelected();
+    });
+    g.appendChild(p);
   });
-
-  $("map-note").textContent = MAP_MODE === "results"
-    ? "Margin in the votes each county has already reported. Grey counties have not reported."
-    : "Margin the model projects for the vote each county has NOT yet counted. Grey counties are finished.";
-
-  const stops = [-1, -0.6, -0.3, 0, 0.3, 0.6, 1]
-    .map((t) => `<span style="background:${rampColor(t * MAP_SCALE)}"></span>`).join("");
-  $("legend").innerHTML =
-    `<div class="legend-scale">${stops}</div>
-     <div class="legend-ends"><span>Stevens +${MAP_SCALE}</span><span>tie</span><span>El-Sayed +${MAP_SCALE}</span></div>
-     <div class="legend-none"><i></i>${MAP_MODE === "results" ? "no results yet" : "counting complete"}</div>`;
-
-  if (PINNED) paintDetail(PINNED);
+  document.getElementById("note-" + map.id).textContent = map.note;
 }
 
-function showTip(county, e) {
-  const row = countyRow(county);
-  const v = mapValue(row);
-  $("map-tip").textContent =
-    `${county}  ${v === null ? (MAP_MODE === "results" ? "no results" : "complete") : signed(v)}`;
-  $("map-tip").hidden = false;
-  moveTip(e);
-  if (!PINNED) paintDetail(county);
+function paintMaps() {
+  if (!GEO) return;
+  MAPS.forEach((map) => {
+    document.getElementById("shapes-" + map.id)
+      .querySelectorAll("path").forEach((p) => {
+        p.setAttribute("fill", rampColor(mapValue(countyRow(p.dataset.county), map.id)));
+      });
+    const empty = map.id === "counted" ? "no results yet" : "counting complete";
+    document.getElementById("legend-" + map.id).innerHTML =
+      `<div class="legend-scale">${[-1, -0.6, -0.3, 0, 0.3, 0.6, 1]
+        .map((t) => `<span style="background:${rampColor(t * MAP_SCALE)}"></span>`).join("")}</div>
+       <div class="legend-ends"><span>Stevens +${MAP_SCALE}</span><span>tie</span><span>El-Sayed +${MAP_SCALE}</span></div>
+       <div class="legend-none"><i></i>${empty}</div>`;
+  });
+  markSelected();
+  paintDetail(PINNED || $("map-detail").dataset.county || null);
 }
 
-function moveTip(e) {
-  const box = $("map-svg").getBoundingClientRect();
-  $("map-tip").style.left = (e.clientX - box.left) + "px";
-  $("map-tip").style.top = (e.clientY - box.top) + "px";
+function markSelected() {
+  MAPS.forEach((map) => {
+    document.getElementById("shapes-" + map.id)
+      .querySelectorAll("path").forEach((p) => {
+        p.classList.toggle("sel", p.dataset.county === PINNED);
+        p.classList.toggle("hov", p.dataset.county === HOVER);
+      });
+  });
+  $("pin-note").hidden = !PINNED;
 }
 
-function hideTip() { $("map-tip").hidden = true; }
+let HOVER = null;
+
+function hover(county, _from) {
+  HOVER = county;
+  markSelected();
+  if (county) paintDetail(county);
+  else if (PINNED) paintDetail(PINNED);
+}
+
+// --- detail panel -----------------------------------------------------------
 
 function paintDetail(county) {
-  const r = countyRow(county);
-  if (!r) return;
+  const box = $("map-detail");
+  const r = county && countyRow(county);
+  if (!r) {
+    box.innerHTML = `<p class="map-hint">Hover a county on either map. Click to pin it.</p>`;
+    box.dataset.county = "";
+    return;
+  }
+  box.dataset.county = county;
   const cls = (v) => (v >= 0 ? "v-el" : "v-st");
-  const pct = r.remaining && (r.remaining_early + r.remaining_ed)
-    ? Math.round(r.remaining_early / (r.remaining_early + r.remaining_ed) * 100)
-    : 0;
+  const outstanding = r.remaining_early + r.remaining_ed;
+  const pct = outstanding ? Math.round((r.remaining_early / outstanding) * 100) : 0;
 
-  $("map-detail").innerHTML = `
+  box.innerHTML = `
     <h3>${county}</h3>
     <dl>
       <dt>Counted</dt><dd>${num.format(r.votes)} of ${num.format(r.projected_total)}</dd>
@@ -248,23 +327,96 @@ function paintDetail(county) {
     </dl>
     <p class="split-note">
       Of what is left, about ${pct}% is early vote and ${100 - pct}% Election Day.
-      This county's early vote is modeled at ${signed(r.early_margin)} and its
-      Election Day vote at ${signed(r.ed_margin)}.
+      This county's early vote is modeled at ${signed(r.early_margin)}, its Election
+      Day vote at ${signed(r.ed_margin)}.
     </p>`;
 }
 
-function initMapTabs() {
-  const set = (mode) => {
-    MAP_MODE = mode;
-    const isResults = mode === "results";
-    $("tab-results").classList.toggle("on", isResults);
-    $("tab-remaining").classList.toggle("on", !isResults);
-    $("tab-results").setAttribute("aria-selected", String(isResults));
-    $("tab-remaining").setAttribute("aria-selected", String(!isResults));
-    paintMap();
-  };
-  $("tab-results").addEventListener("click", () => set("results"));
-  $("tab-remaining").addEventListener("click", () => set("remaining"));
+// --- zoom and pan -----------------------------------------------------------
+
+function applyView() {
+  const t = `translate(${VIEW.x} ${VIEW.y}) scale(${VIEW.k})`;
+  MAPS.forEach((m) => {
+    document.getElementById("shapes-" + m.id).setAttribute("transform", t);
+    // Keep borders hairline-thin as you zoom in rather than ballooning.
+    document.getElementById("shapes-" + m.id)
+      .style.setProperty("--stroke", (0.6 / VIEW.k).toFixed(2) + "px");
+  });
+  $("zoom-reset").hidden = VIEW.k === 1 && VIEW.x === 0 && VIEW.y === 0;
+}
+
+function zoomAt(svg, factor, cx, cy) {
+  const box = svg.getBoundingClientRect();
+  const px = ((cx - box.left) / box.width) * MAP_W;
+  const py = ((cy - box.top) / box.height) * MAP_H;
+  const k = Math.max(1, Math.min(12, VIEW.k * factor));
+  VIEW.x = px - ((px - VIEW.x) / VIEW.k) * k;
+  VIEW.y = py - ((py - VIEW.y) / VIEW.k) * k;
+  VIEW.k = k;
+  clampView();
+  applyView();
+}
+
+function clampView() {
+  const limX = MAP_W * (VIEW.k - 1);
+  const limY = MAP_H * (VIEW.k - 1);
+  VIEW.x = Math.max(-limX, Math.min(0, VIEW.x));
+  VIEW.y = Math.max(-limY, Math.min(0, VIEW.y));
+}
+
+function initMapInteraction() {
+  MAPS.forEach((map) => {
+    const svg = document.getElementById("svg-" + map.id);
+
+    svg.addEventListener("wheel", (e) => {
+      e.preventDefault();
+      zoomAt(svg, e.deltaY < 0 ? 1.18 : 1 / 1.18, e.clientX, e.clientY);
+    }, { passive: false });
+
+    let drag = null;
+    svg.addEventListener("pointerdown", (e) => {
+      if (VIEW.k === 1) return;
+      drag = { x: e.clientX, y: e.clientY, vx: VIEW.x, vy: VIEW.y };
+      svg.setPointerCapture(e.pointerId);
+      svg.classList.add("dragging");
+    });
+    svg.addEventListener("pointermove", (e) => {
+      if (!drag) return;
+      const box = svg.getBoundingClientRect();
+      VIEW.x = drag.vx + ((e.clientX - drag.x) / box.width) * MAP_W;
+      VIEW.y = drag.vy + ((e.clientY - drag.y) / box.height) * MAP_H;
+      clampView();
+      applyView();
+    });
+    const stop = (e) => {
+      if (!drag) return;
+      drag = null;
+      svg.releasePointerCapture(e.pointerId);
+      svg.classList.remove("dragging");
+    };
+    svg.addEventListener("pointerup", stop);
+    svg.addEventListener("pointercancel", stop);
+  });
+
+  $("zoom-in").addEventListener("click", () => {
+    const svg = document.getElementById("svg-counted");
+    const b = svg.getBoundingClientRect();
+    zoomAt(svg, 1.5, b.left + b.width / 2, b.top + b.height / 2);
+  });
+  $("zoom-out").addEventListener("click", () => {
+    const svg = document.getElementById("svg-counted");
+    const b = svg.getBoundingClientRect();
+    zoomAt(svg, 1 / 1.5, b.left + b.width / 2, b.top + b.height / 2);
+  });
+  $("zoom-reset").addEventListener("click", () => {
+    VIEW = { x: 0, y: 0, k: 1 };
+    applyView();
+  });
+  $("unpin").addEventListener("click", () => {
+    PINNED = null;
+    markSelected();
+    paintDetail(null);
+  });
 }
 
 // ---------------------------------------------------------------------------
@@ -381,7 +533,7 @@ function render(data) {
 
   LAST_COUNTIES = data.counties || [];
   renderCounties(data.counties);
-  paintMap();
+  paintMaps();
   renderRegions(data.regional_shift || {});
 
   $("d-counties").textContent = d.counties_reporting;
@@ -431,7 +583,7 @@ async function tick() {
   }
 }
 
-initMapTabs();
+initMapInteraction();
 loadGeo();
 tick();
 setInterval(tick, REFRESH_MS);
